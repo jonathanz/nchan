@@ -1305,7 +1305,8 @@ static void node_connector_callback(redisAsyncContext *ac, void *rep, void *priv
         node_discover_master(node, rcp);
       }
       else {
-        return node_connector_fail(node, "can't tell if node is master or slave");
+        node_set_role(node, REDIS_NODE_ROLE_MASTER);
+        //return node_connector_fail(node, "can't tell if node is master or slave");
       }
       
       //what's next?
