@@ -22,7 +22,7 @@ In a web browser, you can use Websocket or EventSource natively, or the [NchanSu
 
 ## Status and History
 
-The latest Nchan release is 1.2.5 (March 20, 2019) ([changelog](https://nchan.io/changelog)).
+The latest Nchan release is 1.2.6 (June 18, 2019) ([changelog](https://nchan.io/changelog)).
 
 The first iteration of Nchan was written in 2009-2010 as the [Nginx HTTP Push Module](https://pushmodule.slact.net), and was vastly refactored into its present state in 2014-2016.
 
@@ -700,7 +700,7 @@ http {
 <!-- commands: nchan_redis_server nchan_redis_pass -->
 
 ##### High Availability
-Redis Cluster connections are designed to be resilient and try to recover from errors. Interrupted connections will have their commands queued until reconnection, and Nchan will publish any messages it succesfully received while disconnected. Nchan is also adaptive to cluster modifications. It will add new nodes and remove them as needed.
+Redis Cluster connections are designed to be resilient and try to recover from errors. Interrupted connections will have their commands queued until reconnection, and Nchan will publish any messages it successfully received while disconnected. Nchan is also adaptive to cluster modifications. It will add new nodes and remove them as needed.
 
 All Nchan servers sharing a Redis server or cluster should have their times synchronized (via ntpd or your favorite ntp daemon). Failure to do so may result in missed or duplicate messages.
 
@@ -1264,10 +1264,10 @@ Additionally, `nchan_stub_status` data is also exposed as variables. These are a
 
 - **nchan_max_channel_id_length** `<number>`  
   arguments: 1  
-  default: `512`  
+  default: `1024`  
   context: http, server, location  
   legacy name: push_max_channel_id_length  
-  > Maximum permissible channel id length (number of characters). Longer ids will be truncated.    
+  > Maximum permissible channel id length (number of characters). This settings applies to ids before they may be split by the `nchan_channel_id_split_delimiter` Requests with a channel id that is too long will receive a `403 Forbidden` response.    
 
 - **nchan_max_channel_subscribers** `<number>`  
   arguments: 1  

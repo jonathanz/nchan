@@ -80,8 +80,11 @@ static size_t                     redis_publish_message_msgkey_size;
 #define redis_command(node, cb, pd, fmt, args...)                 \
   do {                                                               \
     if(node->state >= REDIS_NODE_READY) {                            \
-      node->pending_commands++;                                      \
-      nchan_update_stub_status(redis_pending_commands, 1);           \
+      if((cb) != NULL) {                                               \
+        /* a reply is expected, so track this command */             \
+        node->pending_commands++;                                    \
+        nchan_update_stub_status(redis_pending_commands, 1);         \
+      }                                                              \
       redisAsyncCommand((node)->ctx.cmd, cb, pd, fmt, ##args);       \
     } else {                                                         \
       node_log_error(node, "Can't run redis command: no connection to redis server.");\
@@ -1977,6 +1980,7 @@ static void nchan_store_create_main_conf(ngx_conf_t *cf, nchan_main_conf_t *mcf)
   
   //reset redis_conf_head for reloads
   redis_conf_head = NULL;
+  nodeset_destroy_all(); //reset all nodesets before loading config
 }
 
 void redis_store_prepare_to_exit_worker() {
@@ -2021,7 +2025,6 @@ static void nchan_store_exit_worker(ngx_cycle_t *cycle) {
   
   //OLD
   //rbtree_walk(&redis_data_tree, (rbtree_walk_callback_pt )redis_data_tree_exiter_stage2, &chanheads);
-  
   nodeset_destroy_all();
   
   //OLD

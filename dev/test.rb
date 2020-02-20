@@ -5,7 +5,20 @@ require 'bundler/setup'
 require 'minitest'
 require 'minitest/reporters'
 require "minitest/autorun"
-Minitest::Reporters.use! [Minitest::Reporters::SpecReporter.new(:color => true)]
+class BetterSpecReporter < Minitest::Reporters::SpecReporter
+  def before_test(test)
+    test_name = test.name.gsub(/^test_: /, 'test:')
+    print pad_test(test_name)
+    print yellow("...")
+  end
+  def record_print_status(test)
+    print ANSI::Code.left(4)
+    print_colored_status(test)
+    print(" (%.2fs)" % test.time) unless test.time.nil?
+    puts
+  end
+end
+Minitest::Reporters.use! BetterSpecReporter.new
 require 'securerandom'
 require 'nchan_tools/pubsub'
 require_relative 'authserver.rb'
@@ -53,7 +66,13 @@ end
 module NchanTools
 class PubSubTest <  Minitest::Test
   def short_id
-    SecureRandom.hex.to_i(16).to_s(36)[0..5]
+    #testinfo = caller_locations(1,1)[0]
+    #if testinfo.label == "pubsub"
+    #  testinfo = caller_locations(2,2)[0]
+    #end
+    #test_name = ("#{testinfo.label}_#{testinfo.lineno}").gsub(/\W/,"_")
+    #"#{test_name}_#{SecureRandom.hex.to_i(16).to_s(36)[0..5]}"
+    "#{SecureRandom.hex.to_i(16).to_s(36)[0..5]}"
   end
 
 
@@ -268,6 +287,27 @@ class PubSubTest <  Minitest::Test
     sub.wait
   end
   
+  def test_websocket_ping_frames
+    pub, sub = pubsub(1, client: :websocket)
+    sub.run
+    pings = ["", "hey", "pingme pls", "this pingis a littlelonger but that's okay it's still not too long"]
+    pongs = pings.dup
+    sub.on :pong do |ev|
+      assert_equal pongs.shift, ev.data, "unexpected pong data"
+      if pongs.length == 0
+        pub.post "FIN"
+      end
+    end
+    
+    sub.wait :ready
+    pings.each do |p|
+      sub.client.send_ping p
+    end
+    sub.wait
+    assert_equal 0, pongs.length, "remaining pongs"
+    sub.terminate
+  end
+  
   def test_websocket_pubsub_echo
     sub=Subscriber.new(url("/pubsub/#{short_id}"), 1, client: :websocket, quit_message: 'FIN')
     
@@ -389,17 +429,18 @@ class PubSubTest <  Minitest::Test
   def test_channel_multiplexing(n=2, delimited=false)
     
     pubs = []
+    shared_id = short_id
     n.times do |i|
-      pubs << MultiCheck.new(short_id)
+      pubs << MultiCheck.new("#{i}_#{shared_id}")
     end
     
-    sub_url=delimited ? multi_sub_url(pubs, '/sub/split/', '_') : multi_sub_url(pubs)
-    
-    n = 15
+    sub_url=delimited ? multi_sub_url(pubs, '/sub/split/', ',') : multi_sub_url(pubs)
+    n = n || 15
+    n_subs = 10
     scrambles = 5
     subs = []
     scrambles.times do |i|
-      sub = Subscriber.new(url("#{sub_url}?meh=#{short_id}"), n, quit_message: 'FIN', retry_delay: 1, timeout: 20)
+      sub = Subscriber.new(url("#{sub_url}?meh=#{short_id}"), n_subs, quit_message: 'FIN', retry_delay: 1, timeout: 20)
       sub.on_failure { false }
       subs << sub
     end
@@ -408,30 +449,29 @@ class PubSubTest <  Minitest::Test
     
     pubs.each {|p| p.pub.post "FIRST from #{p.id}" }
     
-    10.times do |i|
+    5.times do |i|
       pubs.each {|p| p.pub.post "hello #{i} from #{p.id}" }
     end
     
     sleep 1
     
-    5.times do |i|
+    3.times do |i|
       pubs.first.pub.post "yes #{i} from #{pubs.first.id}"
     end
-    
     pubs.each do |p| 
-      10.times do |i|
+      5.times do |i|
         p.pub.post "hello #{i} from #{p.id}"
       end
     end
     
-    latesubs = Subscriber.new(url("#{sub_url}?late&meh=#{short_id}"), n, quit_message: 'FIN')
-    latesubs.on_failure { false }
+    latesubs = Subscriber.new(url("#{sub_url}?late&meh=#{short_id}"), n_subs, quit_message: 'FIN')
+    latesubs.on_failure { puts "shmopp"; false }
     subs << latesubs
     latesubs.run
     
     sleep 1
     
-    10.times do |i|
+    5.times do |i|
       pubs.each {|p| p.pub.post "hello again #{i} from #{p.id}" }
     end
     
@@ -439,7 +479,6 @@ class PubSubTest <  Minitest::Test
     subs.each &:wait
     sleep 1
     subs.each_with_index do |sub, sub_i|
-      
       assert_equal 0, sub.errors.count, "Subscriber encountered #{sub.errors.count} errors: #{sub.errors.join ", "}"
       
       msgs=[]
@@ -466,7 +505,15 @@ class PubSubTest <  Minitest::Test
     test_channel_multiplexing 5
   end
   
+    def test_channel_multiplexing_3
+    test_channel_multiplexing 3
+  end
+  
   def test_channel_delimitered_multiplexing_15
+    test_channel_multiplexing 15, true
+  end
+  
+  def test_channel_delimitered_multiplexing_100
     test_channel_multiplexing 15, true
   end
   
@@ -1276,7 +1323,7 @@ class PubSubTest <  Minitest::Test
         end
         
         begin
-          chan = short_id
+          chan = "#{client_type}_#{with_auth ? "auth" : ""}_#{short_id}"
           
           #puts client_type
           
